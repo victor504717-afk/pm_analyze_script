@@ -594,7 +594,7 @@ def print_analysis(results):
     print()
     
     # Risk Analysis
-    print("⚠️  RISK ANALYSIS")
+    print("[!]  RISK ANALYSIS")
     if results['up_final_position'] > 0 and results['down_final_position'] > 0:
         # Calculate potential outcomes
         # If YES wins: gets YES shares worth $1 each, loses NO cost

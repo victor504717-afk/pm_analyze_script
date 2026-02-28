@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trade Analysis Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0f1117;
+      --surface: #1a1d26;
+      --card:    #20232e;
+      --border:  #2e3347;
+      --knicks:  #006BB6;
+      --knicks2: #F58426;
+      --bucks:   #00471B;
+      --bucks2:  #EEE1C6;
+      --profit:  #22c55e;
+      --loss:    #ef4444;
+      --neutral: #94a3b8;
+      --text:    #e2e8f0;
+      --muted:   #64748b;
+      --gold:    #f59e0b;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; min-height: 100vh; }
+
+    /* ── Layout ── */
+    .shell { max-width: 1440px; margin: 0 auto; padding: 20px 24px 48px; }
+
+    /* ── Header ── */
+    header { display: flex; align-items: center; gap: 20px; padding: 20px 24px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .market-icon { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border); }
+    .market-info { flex: 1; min-width: 200px; }
+    .market-title { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; }
+    .market-slug  { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    .user-block { display: flex; align-items: center; gap: 12px; }
+    .user-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border); }
+    .user-name  { font-weight: 600; }
+    .user-alias { color: var(--muted); font-size: 12px; }
+    .wallet-badge { font-size: 11px; font-family: monospace; color: var(--muted); background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; margin-top: 4px; display: inline-block; }
+
+    /* ── Section title ── */
+    .section-title { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+
+    /* ── KPI Cards Row ── */
+    .kpi-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+    .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; position: relative; overflow: hidden; }
+    .kpi::before { content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%; background: var(--accent, var(--border)); border-radius: 10px 0 0 10px; }
+    .kpi-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+    .kpi-value { font-size: 26px; font-weight: 700; margin-top: 4px; line-height: 1.1; }
+    .kpi-sub   { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+    /* ── Two-column grid ── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    @media(max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+    /* ── Card ── */
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+    .card-title { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .7px; margin-bottom: 14px; }
+    .chart-wrap { position: relative; }
+
+    /* ── Outcome bars ── */
+    .outcome-row { display: flex; flex-direction: column; gap: 10px; }
+    .outcome-item { }
+    .outcome-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .outcome-name { font-weight: 600; }
+    .outcome-stats { font-size: 12px; color: var(--muted); }
+    .bar-bg   { height: 8px; background: rgba(255,255,255,.07); border-radius: 4px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 4px; transition: width .5s ease; }
+
+    /* ── Hedge Status ── */
+    .hedge-box { border-radius: 10px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; }
+    .hedge-icon { font-size: 32px; }
+    .hedge-label { font-size: 11px; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); }
+    .hedge-value { font-size: 22px; font-weight: 700; }
+    .hedge-detail { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Risk Scenario ── */
+    .scenario-row { display: flex; gap: 12px; }
+    .scenario-card { flex: 1; border-radius: 8px; padding: 14px; text-align: center; }
+    .scenario-label { font-size: 11px; text-transform: uppercase; letter-spacing: .7px; margin-bottom: 6px; }
+    .scenario-pnl   { font-size: 24px; font-weight: 700; }
+    .scenario-pct   { font-size: 12px; margin-top: 2px; }
+
+    /* ── Stats grid ── */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; }
+    .stat-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-label { color: var(--muted); }
+    .stat-value { font-weight: 600; }
+
+    /* ── Trade Table ── */
+    .table-controls { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+    .filter-btn { padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text); font-size: 12px; cursor: pointer; transition: all .15s; }
+    .filter-btn:hover, .filter-btn.active { border-color: var(--knicks); background: rgba(0,107,182,.2); color: #fff; }
+    .search-box { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,.04); color: var(--text); font-size: 12px; width: 200px; }
+    .search-box::placeholder { color: var(--muted); }
+    .trade-count { margin-left: auto; color: var(--muted); font-size: 12px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th { text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; white-space: nowrap; }
+    thead th:hover { color: var(--text); }
+    thead th .sort-arrow { opacity: .4; margin-left: 4px; }
+    thead th.sorted .sort-arrow { opacity: 1; color: var(--knicks); }
+    tbody tr { border-bottom: 1px solid rgba(255,255,255,.03); transition: background .1s; }
+    tbody tr:hover { background: rgba(255,255,255,.03); }
+    td { padding: 7px 10px; vertical-align: middle; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: .4px; }
+    .pill-buy  { background: rgba(34,197,94,.15);  color: #4ade80; }
+    .pill-sell { background: rgba(239,68,68,.15);  color: #f87171; }
+    .pill-knicks { background: rgba(0,107,182,.2); color: #60a5fa; }
+    .pill-bucks  { background: rgba(0,71,27,.35);  color: #86efac; }
+    .tx-link { font-family: monospace; font-size: 11px; color: var(--muted); text-decoration: none; }
+    .tx-link:hover { color: var(--knicks); }
+    .pagination { display: flex; justify-content: center; gap: 6px; margin-top: 14px; }
+    .pg-btn { padding: 5px 11px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text); font-size: 12px; cursor: pointer; transition: all .15s; }
+    .pg-btn:hover, .pg-btn.active { background: rgba(0,107,182,.3); border-color: var(--knicks); }
+    .pg-btn:disabled { opacity: .3; cursor: default; }
+
+    /* ── Profitability timeline bar ── */
+    .profit-timeline { height: 18px; border-radius: 6px; overflow: hidden; display: flex; margin-bottom: 8px; }
+    .profit-seg { height: 100%; }
+
+    /* ── Colors ── */
+    .text-profit { color: var(--profit); }
+    .text-loss   { color: var(--loss); }
+    .text-knicks { color: var(--knicks); }
+    .text-bucks  { color: #4ade80; }
+    .text-muted  { color: var(--muted); }
+    .badge-profit { background: rgba(34,197,94,.12); border: 1px solid rgba(34,197,94,.3); color: var(--profit); padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+    .badge-loss   { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.3);  color: var(--loss);   padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+  </style>
+</head>
+<body>
+<div class="shell" id="app">
+  <div style="text-align:center;padding:60px;color:var(--muted)">Loading trades.json…</div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  Utilities
+// ─────────────────────────────────────────────
+const fmt  = (n, d=2) => n == null ? 'N/A' : Number(n).toFixed(d);
+const fmtD = (n, d=2) => n == null ? 'N/A' : '$' + Number(n).toFixed(d);
+const fmtPct = n => (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
+const ts2dt = ts => new Date(ts * 1000);
+const short  = hex => hex.slice(0,6) + '…' + hex.slice(-4);
+const poly   = tx => `https://polygonscan.com/tx/${tx}`;
+
+// ─────────────────────────────────────────────
+//  Analysis (mirrors analyze_trades.py in JS)
+// ─────────────────────────────────────────────
+function analyze(trades) {
+  trades = [...trades].sort((a,b) => a.timestamp - b.timestamp);
+
+  const outcomes = [...new Set(trades.map(t => t.outcome))].sort();
+  // Map: outcomeIndex 0 = "YES" side  (first alphabetically or index 0)
+  const yesOut = outcomes.find(o => trades.find(t=>t.outcome===o && t.outcomeIndex===0)) || outcomes[0];
+  const noOut  = outcomes.find(o => o !== yesOut) || null;
+  const noKey  = noOut || '\x00none'; // safe sentinel when no second outcome exists
+
+  // Per-outcome accumulators — always initialise both sides
+  const acc = {};
+  for (const o of [yesOut, noKey]) {
+    acc[o] = {
+      buys:[], sells:[],
+      sharesBought:0, sharesSold:0,
+      costBasis:0, proceeds:0,
+      position:0, avgPrice:0, totalCost:0
+    };
+  }
+
+  const timeline = [];
+
+  for (const t of trades) {
+    const a  = acc[t.outcome];
+    if (!a) continue; // skip trades for outcomes not tracked (e.g. only one outcome in data)
+    const sz = t.size, pr = t.price, val = sz * pr;
+
+    if (t.side === 'BUY') {
+      a.buys.push(t);
+      a.sharesBought += sz;
+      a.costBasis    += val;
+      a.totalCost    += val;
+      a.position     += sz;
+      if (a.position > 0) a.avgPrice = a.totalCost / a.position;
+    } else {
+      a.sells.push(t);
+      a.sharesSold += sz;
+      a.proceeds   += val;
+      a.position   -= sz;
+      if (a.position > 0) {
+        a.totalCost -= sz * a.avgPrice;
+        a.avgPrice   = a.totalCost / a.position;
+      } else {
+        a.totalCost = 0; a.avgPrice = 0;
+      }
+    }
+
+    const yP = acc[yesOut].avgPrice;
+    const nP = acc[noKey].avgPrice;
+    const combinedAvg = yP + nP;
+    const hasHedge    = acc[yesOut].position > 0 && acc[noKey].position > 0;
+
+    timeline.push({
+      timestamp  : t.timestamp,
+      dt         : ts2dt(t.timestamp),
+      [yesOut+'_avg']: yP,
+      [noKey+'_avg'] : nP,
+      combinedAvg,
+      profitable : hasHedge ? combinedAvg < 1.0 : null,
+      [yesOut+'_pos']: acc[yesOut].position,
+      [noKey+'_pos']  : acc[noKey].position,
+    });
+  }
+
+  // Realized PnL
+  const pnl = {};
+  for (const o of outcomes) {
+    const a = acc[o];
+    const avgCost = a.sharesBought > 0 ? a.costBasis / a.sharesBought : 0;
+    pnl[o] = a.proceeds - a.sharesSold * avgCost;
+  }
+
+  // Risk scenarios
+  const yA = acc[yesOut], nA = acc[noKey];
+  const totalCost = yA.costBasis + nA.costBasis;
+  const yesWinPnl = yA.position - nA.costBasis;
+  const noWinPnl  = nA.position - yA.costBasis;
+
+  // Profitability intervals
+  const profitableIntervals = [], unprofitableIntervals = [];
+  let cur = null, iStart = null;
+  for (let i = 0; i < timeline.length; i++) {
+    const e = timeline[i];
+    if (e.profitable === null) continue;
+    if (cur !== e.profitable) {
+      if (cur !== null) {
+        (cur ? profitableIntervals : unprofitableIntervals).push({
+          start: iStart, end: timeline[i-1].dt,
+          startTs: timeline[profitableIntervals.concat(unprofitableIntervals).reduce((a,b)=>a,{startIdx:0}).startIdx || 0]?.timestamp
+        });
+      }
+      cur = e.profitable; iStart = e.dt;
+    }
+  }
+  if (cur !== null && iStart)
+    (cur ? profitableIntervals : unprofitableIntervals).push({start: iStart, end: timeline[timeline.length-1].dt});
+
+  // Profitability %
+  const allDual = timeline.filter(e => e.profitable !== null);
+  const profPct = allDual.length > 0
+    ? allDual.filter(e => e.profitable).length / allDual.length * 100
+    : null;
+
+  // Trade interval
+  const diffs = [];
+  for (let i=1;i<trades.length;i++) diffs.push((trades[i].timestamp - trades[i-1].timestamp)/60);
+  const avgMinBetween = diffs.length ? diffs.reduce((a,b)=>a+b,0)/diffs.length : 0;
+
+  return {
+    trades, outcomes, yesOut, noOut, noKey, acc, timeline, pnl,
+    yesWinPnl, noWinPnl, totalCost,
+    profitableIntervals, unprofitableIntervals, profPct,
+    avgMinBetween,
+    combinedAvg: yA.position > 0 && nA.position > 0
+      ? yA.avgPrice + nA.avgPrice : null,
+    isProfitable: yA.position > 0 && nA.position > 0
+      ? yA.avgPrice + nA.avgPrice < 1.0 : null,
+  };
+}
+
+// ─────────────────────────────────────────────
+//  Render
+// ─────────────────────────────────────────────
+function render(trades) {
+  const R = analyze(trades);
+  const { yesOut, noOut, noKey, acc, timeline, outcomes } = R;
+  const yA = acc[yesOut], nA = acc[noKey];
+  const noLabel = noOut || '—'; // safe display label when second outcome absent
+
+  const first = trades[0];
+  const totalTrades = trades.length;
+  const totalCost   = yA.costBasis + nA.costBasis;
+  const totalProc   = yA.proceeds  + nA.proceeds;
+
+  document.getElementById('app').innerHTML = `
+    <!-- ═══ HEADER ═══ -->
+    <header>
+      <img class="market-icon" src="${first.icon}" alt="market" onerror="this.style.display='none'">
+      <div class="market-info">
+        <div class="market-title">${first.title}</div>
+        <div class="market-slug">${first.eventSlug}</div>
+      </div>
+      <div class="user-block">
+        <img class="user-avatar" src="${first.profileImage}" alt="user" onerror="this.style.display='none'">
+        <div>
+          <div class="user-name">${first.name}</div>
+          <div class="user-alias">${first.pseudonym}</div>
+          <span class="wallet-badge">${short(first.proxyWallet)}</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- ═══ KPI CARDS ═══ -->
+    <div class="kpi-row">
+      <div class="kpi" style="--accent:var(--knicks)">
+        <div class="kpi-label">Total Trades</div>
+        <div class="kpi-value">${totalTrades}</div>
+        <div class="kpi-sub">${yA.buys.length+yA.sells.length} ${yesOut} / ${nA.buys.length+nA.sells.length} ${noLabel}</div>
+      </div>
+      <div class="kpi" style="--accent:var(--gold)">
+        <div class="kpi-label">Total Invested</div>
+        <div class="kpi-value">${fmtD(totalCost)}</div>
+        <div class="kpi-sub">Proceeds ${fmtD(totalProc)}</div>
+      </div>
+      <div class="kpi" style="--accent:var(--knicks)">
+        <div class="kpi-label">${yesOut} Position</div>
+        <div class="kpi-value text-knicks">${fmt(yA.position)} <span style="font-size:14px;font-weight:400">sh</span></div>
+        <div class="kpi-sub">Avg ${fmtD(yA.avgPrice,4)}</div>
+      </div>
+      <div class="kpi" style="--accent:#00471B">
+        <div class="kpi-label">${noLabel} Position</div>
+        <div class="kpi-value text-bucks">${fmt(nA.position)} <span style="font-size:14px;font-weight:400">sh</span></div>
+        <div class="kpi-sub">Avg ${fmtD(nA.avgPrice,4)}</div>
+      </div>
+      <div class="kpi" style="--accent:${R.isProfitable ? 'var(--profit)' : R.isProfitable===false ? 'var(--loss)' : 'var(--border)'}">
+        <div class="kpi-label">Combined Avg</div>
+        <div class="kpi-value" style="color:${R.isProfitable ? 'var(--profit)' : R.isProfitable===false ? 'var(--loss)' : 'var(--neutral)'}">
+          ${R.combinedAvg != null ? fmtD(R.combinedAvg,4) : 'N/A'}
+        </div>
+        <div class="kpi-sub">${R.isProfitable===true ? '< $1.00 — PROFITABLE' : R.isProfitable===false ? '>= $1.00 — UNPROFITABLE' : 'No hedge yet'}</div>
+      </div>
+      <div class="kpi" style="--accent:${R.profPct != null && R.profPct >= 50 ? 'var(--profit)' : 'var(--loss)'}">
+        <div class="kpi-label">Time Profitable</div>
+        <div class="kpi-value" style="color:${R.profPct != null && R.profPct >= 50 ? 'var(--profit)' : 'var(--loss)'}">
+          ${R.profPct != null ? R.profPct.toFixed(0)+'%' : 'N/A'}
+        </div>
+        <div class="kpi-sub">Avg ${R.avgMinBetween.toFixed(1)} min/trade</div>
+      </div>
+    </div>
+
+    <!-- ═══ HEDGE STATUS + RISK ═══ -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Hedge Status</div>
+        <div class="hedge-box" style="background:${R.isProfitable ? 'rgba(34,197,94,.08)' : R.isProfitable===false ? 'rgba(239,68,68,.08)' : 'rgba(148,163,184,.06)'}; border: 1px solid ${R.isProfitable ? 'rgba(34,197,94,.25)': R.isProfitable===false ? 'rgba(239,68,68,.25)':'var(--border)'}">
+          <div class="hedge-icon">${R.isProfitable ? '✅' : R.isProfitable===false ? '❌' : '⏳'}</div>
+          <div>
+            <div class="hedge-label">Current Status</div>
+            <div class="hedge-value" style="color:${R.isProfitable ? 'var(--profit)' : R.isProfitable===false ? 'var(--loss)' : 'var(--neutral)'}">
+              ${R.isProfitable===true ? 'PROFITABLE HEDGE' : R.isProfitable===false ? 'UNPROFITABLE HEDGE' : 'SINGLE-SIDED POSITION'}
+            </div>
+            <div class="hedge-detail">
+              ${R.combinedAvg!=null
+                ? `${yesOut} avg $${yA.avgPrice.toFixed(4)} + ${noLabel} avg $${nA.avgPrice.toFixed(4)} = $${R.combinedAvg.toFixed(4)}`
+                : 'Only one outcome has an open position'}
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:14px">
+          <div class="outcome-row">
+            ${outcomes.map(o => {
+              const a = acc[o];
+              const maxPos = Math.max(yA.position, nA.position, 1);
+              const pct = a.position / maxPos * 100;
+              const color = o === yesOut ? 'var(--knicks)' : 'var(--bucks)';
+              return `
+              <div class="outcome-item">
+                <div class="outcome-header">
+                  <span class="outcome-name" style="color:${color}">${o}</span>
+                  <span class="outcome-stats">${fmt(a.position)} sh @ ${fmtD(a.avgPrice,4)}</span>
+                </div>
+                <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:3px">
+                  <span>Cost ${fmtD(a.costBasis)} | Proceeds ${fmtD(a.proceeds)}</span>
+                  <span>Net ${fmtD(a.costBasis - a.proceeds)}</span>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Risk Scenarios — Outcome PnL</div>
+        <div class="scenario-row">
+          <div class="scenario-card" style="background:rgba(0,107,182,.1);border:1px solid rgba(0,107,182,.3)">
+            <div class="scenario-label" style="color:#60a5fa">If ${yesOut} Wins</div>
+            <div class="scenario-pnl" style="color:${R.yesWinPnl>=0?'var(--profit)':'var(--loss)'}">
+              ${fmtD(R.yesWinPnl)}
+            </div>
+            <div class="scenario-pct" style="color:var(--muted)">
+              ${R.totalCost>0 ? fmtPct(R.yesWinPnl/R.totalCost*100) : ''} return
+            </div>
+          </div>
+          <div class="scenario-card" style="background:rgba(0,71,27,.2);border:1px solid rgba(0,71,27,.5)">
+            <div class="scenario-label" style="color:#86efac">If ${noLabel} Wins</div>
+            <div class="scenario-pnl" style="color:${R.noWinPnl>=0?'var(--profit)':'var(--loss)'}">
+              ${fmtD(R.noWinPnl)}
+            </div>
+            <div class="scenario-pct" style="color:var(--muted)">
+              ${R.totalCost>0 ? fmtPct(R.noWinPnl/R.totalCost*100) : ''} return
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:14px">
+          <div class="stat-grid">
+            <div class="stat-row"><span class="stat-label">Total Invested</span><span class="stat-value">${fmtD(totalCost)}</span></div>
+            <div class="stat-row"><span class="stat-label">Realized PnL</span><span class="stat-value" style="color:${((R.pnl[yesOut]||0)+(R.pnl[noOut]||0))>=0?'var(--profit)':'var(--loss)'}">${fmtD((R.pnl[yesOut]||0)+(R.pnl[noOut]||0))}</span></div>
+            <div class="stat-row"><span class="stat-label">${yesOut} Break-even</span><span class="stat-value">${yA.position>0 ? fmtD(nA.costBasis/yA.position,4) : 'N/A'}</span></div>
+            <div class="stat-row"><span class="stat-label">${noLabel} Break-even</span><span class="stat-value">${nA.position>0 ? fmtD(yA.costBasis/nA.position,4) : 'N/A'}</span></div>
+            <div class="stat-row"><span class="stat-label">Implied ${yesOut} Prob</span><span class="stat-value">${yA.avgPrice>0 ? (yA.avgPrice*100).toFixed(1)+'%' : 'N/A'}</span></div>
+            <div class="stat-row"><span class="stat-label">Implied ${noLabel} Prob</span><span class="stat-value">${nA.avgPrice>0 ? (nA.avgPrice*100).toFixed(1)+'%' : 'N/A'}</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ CHARTS ═══ -->
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="card">
+        <div class="card-title">Average Price Timeline</div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chartPrice"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Position Size Over Time</div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chartPos"></canvas></div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">Trade Scatter — Price × Time</div>
+      <div class="chart-wrap" style="height:220px"><canvas id="chartScatter"></canvas></div>
+    </div>
+
+    <!-- ═══ TRADING BEHAVIOR ═══ -->
+    <div class="grid-3" style="margin-bottom:16px">
+      ${outcomes.map(o => {
+        const a = acc[o];
+        const buyPrices  = a.buys.map(t=>t.price);
+        const sellPrices = a.sells.map(t=>t.price);
+        const buySizes   = a.buys.map(t=>t.size);
+        const color = o===yesOut ? '#60a5fa' : '#86efac';
+        const avgBuyP  = buyPrices.length  ? buyPrices.reduce((s,v)=>s+v,0)/buyPrices.length   : null;
+        const avgSellP = sellPrices.length ? sellPrices.reduce((s,v)=>s+v,0)/sellPrices.length : null;
+        const avgSize  = buySizes.length   ? buySizes.reduce((s,v)=>s+v,0)/buySizes.length     : null;
+        return `
+        <div class="card">
+          <div class="card-title" style="color:${color}">${o} Details</div>
+          <div class="stat-row"><span class="stat-label">Buys / Sells</span><span class="stat-value">${a.buys.length} / ${a.sells.length}</span></div>
+          <div class="stat-row"><span class="stat-label">Shares Bought</span><span class="stat-value">${fmt(a.sharesBought)}</span></div>
+          <div class="stat-row"><span class="stat-label">Shares Sold</span><span class="stat-value">${fmt(a.sharesSold)}</span></div>
+          <div class="stat-row"><span class="stat-label">Avg Buy Price</span><span class="stat-value">${avgBuyP!=null?fmtD(avgBuyP,4):'—'}</span></div>
+          <div class="stat-row"><span class="stat-label">Avg Sell Price</span><span class="stat-value">${avgSellP!=null?fmtD(avgSellP,4):'—'}</span></div>
+          <div class="stat-row"><span class="stat-label">Min / Max Buy</span><span class="stat-value">${buyPrices.length?fmtD(Math.min(...buyPrices),4)+' / '+fmtD(Math.max(...buyPrices),4):'—'}</span></div>
+          <div class="stat-row"><span class="stat-label">Avg Trade Size</span><span class="stat-value">${avgSize!=null?fmt(avgSize)+' sh':'—'}</span></div>
+          <div class="stat-row"><span class="stat-label">Realized PnL</span><span class="stat-value" style="color:${R.pnl[o]>=0?'var(--profit)':'var(--loss)'}">${fmtD(R.pnl[o])}</span></div>
+        </div>`;
+      }).join('')}
+      <div class="card">
+        <div class="card-title">Strategy</div>
+        ${(() => {
+          const yB = yA.buys.length, nB = nA.buys.length, tot = yB+nB;
+          const intensity = R.avgMinBetween < 5 ? ['HIGH','Very active, rapid fire'] : R.avgMinBetween < 15 ? ['MODERATE','Regular activity'] : ['LOW','Patient, selective'];
+          const strat = yB > nB*2 ? `${yesOut}-FOCUSED` : nB > yB*2 ? `${noLabel}-FOCUSED` : 'BALANCED HEDGE';
+          return `
+          <div class="stat-row"><span class="stat-label">Strategy</span><span class="stat-value">${strat}</span></div>
+          <div class="stat-row"><span class="stat-label">${yesOut} / ${noLabel} buys</span><span class="stat-value">${yB} / ${nB}</span></div>
+          <div class="stat-row"><span class="stat-label">Buy ratio</span><span class="stat-value">${tot>0?(yB/tot*100).toFixed(0)+'% / '+(nB/tot*100).toFixed(0)+'%':'—'}</span></div>
+          <div class="stat-row"><span class="stat-label">Intensity</span><span class="stat-value">${intensity[0]}</span></div>
+          <div class="stat-row"><span class="stat-label">Avg gap</span><span class="stat-value">${R.avgMinBetween.toFixed(1)} min</span></div>
+          <div class="stat-row"><span class="stat-label">Interpretation</span><span class="stat-value" style="color:var(--muted);font-weight:400;font-size:12px">${intensity[1]}</span></div>
+          ${R.profPct!=null ? `<div class="stat-row"><span class="stat-label">% Time Profitable</span><span class="stat-value" style="color:${R.profPct>=50?'var(--profit)':'var(--loss)'}">${R.profPct.toFixed(1)}%</span></div>` : ''}`;
+        })()}
+      </div>
+    </div>
+
+    <!-- ═══ TRADE LOG ═══ -->
+    <div class="card">
+      <div class="card-title">Trade Log</div>
+      <div class="table-controls">
+        <button class="filter-btn active" data-filter="all">All</button>
+        ${outcomes.map(o => `<button class="filter-btn" data-filter="${o}">${o}</button>`).join('')}
+        <button class="filter-btn" data-filter="BUY">Buys</button>
+        <button class="filter-btn" data-filter="SELL">Sells</button>
+        <input class="search-box" id="txSearch" placeholder="Search tx hash…" />
+        <span class="trade-count" id="tradeCount"></span>
+      </div>
+      <div style="overflow-x:auto" id="tableWrap">
+        <table id="tradeTable">
+          <thead>
+            <tr>
+              <th data-col="idx">#<span class="sort-arrow">↕</span></th>
+              <th data-col="dt">Time<span class="sort-arrow">↕</span></th>
+              <th data-col="outcome">Outcome<span class="sort-arrow">↕</span></th>
+              <th data-col="side">Side<span class="sort-arrow">↕</span></th>
+              <th data-col="size">Size<span class="sort-arrow">↕</span></th>
+              <th data-col="price">Price<span class="sort-arrow">↕</span></th>
+              <th data-col="value">Value<span class="sort-arrow">↕</span></th>
+              <th>Tx</th>
+            </tr>
+          </thead>
+          <tbody id="tradeBody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  `;
+
+  // Setup table
+  setupTable(trades, outcomes, yesOut);
+
+  // Setup charts (after DOM is ready)
+  requestAnimationFrame(() => {
+    drawPriceChart(R);
+    drawPosChart(R);
+    drawScatterChart(trades, R);
+  });
+}
+
+// ─────────────────────────────────────────────
+//  Table
+// ─────────────────────────────────────────────
+function setupTable(trades, outcomes, yesOut) {
+  let filtered = [...trades].map((t,i) => ({...t, _origIdx: i+1}));
+  let filter = 'all', searchVal = '', sortCol = 'dt', sortDir = 1, page = 1;
+  const PER_PAGE = 20;
+
+  function applyFilter() {
+    filtered = trades.map((t,i) => ({...t, _origIdx: i+1})).filter(t => {
+      if (filter === 'all') return true;
+      if (outcomes.includes(filter)) return t.outcome === filter;
+      return t.side === filter;
+    }).filter(t => {
+      if (!searchVal) return true;
+      return t.transactionHash.toLowerCase().includes(searchVal.toLowerCase());
+    });
+    filtered.sort((a,b) => {
+      let av, bv;
+      if (sortCol==='dt')      { av=a.timestamp; bv=b.timestamp; }
+      else if (sortCol==='size')  { av=a.size; bv=b.size; }
+      else if (sortCol==='price') { av=a.price; bv=b.price; }
+      else if (sortCol==='value') { av=a.size*a.price; bv=b.size*b.price; }
+      else if (sortCol==='outcome'){av=a.outcome; bv=b.outcome; }
+      else if (sortCol==='side')  { av=a.side; bv=b.side; }
+      else { av=a._origIdx; bv=b._origIdx; }
+      return av < bv ? -sortDir : av > bv ? sortDir : 0;
+    });
+    page = 1;
+    renderTable();
+  }
+
+  function renderTable() {
+    const start = (page-1)*PER_PAGE, end = start+PER_PAGE;
+    const visible = filtered.slice(start, end);
+    document.getElementById('tradeCount').textContent = `${filtered.length} trades`;
+    document.getElementById('tradeBody').innerHTML = visible.map(t => `
+      <tr>
+        <td style="color:var(--muted)">${t._origIdx}</td>
+        <td style="font-size:12px;color:var(--muted)">${ts2dt(t.timestamp).toLocaleString()}</td>
+        <td><span class="pill pill-${t.outcome=== (outcomes[0])?'knicks':'bucks'}">${t.outcome}</span></td>
+        <td><span class="pill pill-${t.side.toLowerCase()}">${t.side}</span></td>
+        <td style="text-align:right">${fmt(t.size)}</td>
+        <td style="text-align:right">${fmtD(t.price,4)}</td>
+        <td style="text-align:right">${fmtD(t.size*t.price)}</td>
+        <td><a class="tx-link" href="${poly(t.transactionHash)}" target="_blank">${short(t.transactionHash)}</a></td>
+      </tr>`).join('');
+
+    // Pagination
+    const pages = Math.ceil(filtered.length / PER_PAGE);
+    const pg = document.getElementById('pagination');
+    pg.innerHTML = '';
+    const addBtn = (label, p, disabled=false) => {
+      const b = document.createElement('button');
+      b.className = 'pg-btn' + (p===page?' active':'');
+      b.textContent = label; b.disabled = disabled;
+      b.onclick = () => { page=p; renderTable(); };
+      pg.appendChild(b);
+    };
+    addBtn('‹', page-1, page<=1);
+    const lo = Math.max(1, page-2), hi = Math.min(pages, page+2);
+    if (lo>1) { addBtn('1',1); if(lo>2) pg.appendChild(Object.assign(document.createElement('span'),{textContent:'…',style:'color:var(--muted);padding:0 4px'})); }
+    for (let i=lo;i<=hi;i++) addBtn(i,i);
+    if (hi<pages) { if(hi<pages-1) pg.appendChild(Object.assign(document.createElement('span'),{textContent:'…',style:'color:var(--muted);padding:0 4px'})); addBtn(pages,pages); }
+    addBtn('›', page+1, page>=pages);
+  }
+
+  // Filter buttons
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      filter = btn.dataset.filter;
+      applyFilter();
+    });
+  });
+
+  // Search
+  document.getElementById('txSearch').addEventListener('input', e => {
+    searchVal = e.target.value;
+    applyFilter();
+  });
+
+  // Sort headers
+  document.querySelectorAll('#tradeTable thead th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      if (sortCol === th.dataset.col) sortDir *= -1;
+      else { sortCol = th.dataset.col; sortDir = 1; }
+      document.querySelectorAll('#tradeTable thead th').forEach(h=>h.classList.remove('sorted'));
+      th.classList.add('sorted');
+      th.querySelector('.sort-arrow').textContent = sortDir===1 ? '↓' : '↑';
+      applyFilter();
+    });
+  });
+
+  applyFilter();
+}
+
+// ─────────────────────────────────────────────
+//  Charts
+// ─────────────────────────────────────────────
+const CHART_DEFAULTS = {
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 12, font:{size:11} } }, tooltip: { backgroundColor: '#1e2130', borderColor:'#2e3347', borderWidth:1, titleColor:'#e2e8f0', bodyColor:'#94a3b8' } },
+  scales: {
+    x: { ticks:{color:'#64748b',font:{size:10}}, grid:{color:'rgba(255,255,255,.04)'} },
+    y: { ticks:{color:'#64748b',font:{size:10}}, grid:{color:'rgba(255,255,255,.06)'} }
+  }
+};
+
+function drawPriceChart(R) {
+  const { timeline, yesOut, noOut, noKey } = R;
+  const noLabel = noOut || '—';
+  const tl = timeline.filter(e => e[yesOut+'_avg'] > 0 || e[noKey+'_avg'] > 0);
+  const labels = tl.map(e => e.dt);
+
+  new Chart(document.getElementById('chartPrice'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: `${yesOut} Avg`, data: tl.map(e=>e[yesOut+'_avg']), borderColor:'#60a5fa', backgroundColor:'rgba(96,165,250,.08)', tension:.3, pointRadius:0, borderWidth:2 },
+        { label: `${noLabel} Avg`,  data: tl.map(e=>e[noKey+'_avg']), borderColor:'#4ade80', backgroundColor:'rgba(74,222,128,.08)', tension:.3, pointRadius:0, borderWidth:2 },
+        { label: 'Combined',       data: tl.map(e=>e.combinedAvg),  borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,.06)', tension:.3, pointRadius:0, borderWidth:2, borderDash:[4,3] },
+        { label: '$1.00 Threshold',data: tl.map(()=>1.0),           borderColor:'rgba(239,68,68,.5)', pointRadius:0, borderWidth:1, borderDash:[6,4] },
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      scales: {
+        x: { type:'time', time:{unit:'minute',displayFormats:{minute:'HH:mm'}}, ticks:{color:'#64748b',font:{size:10},maxTicksLimit:8}, grid:{color:'rgba(255,255,255,.04)'} },
+        y: { min:0, max:1.1, ticks:{color:'#64748b',font:{size:10},callback:v=>'$'+v.toFixed(2)}, grid:{color:'rgba(255,255,255,.06)'} }
+      }
+    }
+  });
+}
+
+function drawPosChart(R) {
+  const { timeline, yesOut, noOut, noKey } = R;
+  const noLabel = noOut || '—';
+  new Chart(document.getElementById('chartPos'), {
+    type: 'line',
+    data: {
+      labels: timeline.map(e=>e.dt),
+      datasets: [
+        { label: `${yesOut} Shares`, data: timeline.map(e=>e[yesOut+'_pos']), borderColor:'#60a5fa', backgroundColor:'rgba(96,165,250,.12)', fill:true, tension:.3, pointRadius:0, borderWidth:2 },
+        { label: `${noLabel} Shares`,  data: timeline.map(e=>e[noKey+'_pos']),  borderColor:'#4ade80', backgroundColor:'rgba(74,222,128,.08)',  fill:true, tension:.3, pointRadius:0, borderWidth:2 },
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      scales: {
+        x: { type:'time', time:{unit:'minute',displayFormats:{minute:'HH:mm'}}, ticks:{color:'#64748b',font:{size:10},maxTicksLimit:8}, grid:{color:'rgba(255,255,255,.04)'} },
+        y: { ticks:{color:'#64748b',font:{size:10}}, grid:{color:'rgba(255,255,255,.06)'} }
+      }
+    }
+  });
+}
+
+function drawScatterChart(trades, R) {
+  const { yesOut, noOut } = R;
+  const mkDataset = (outcome, side, color) => ({
+    label: `${outcome} ${side}`,
+    data: trades
+      .filter(t => t.outcome===outcome && t.side===side)
+      .map(t => ({ x: ts2dt(t.timestamp), y: t.price, r: Math.min(Math.sqrt(t.size)*0.5+2, 12) })),
+    backgroundColor: color,
+    pointStyle: side==='BUY' ? 'triangle' : 'rectRot',
+  });
+
+  const datasets = [
+    mkDataset(yesOut, 'BUY',  'rgba(96,165,250,.6)'),
+    mkDataset(yesOut, 'SELL', 'rgba(96,165,250,.25)'),
+    ...(noOut ? [
+      mkDataset(noOut, 'BUY',  'rgba(74,222,128,.6)'),
+      mkDataset(noOut, 'SELL', 'rgba(74,222,128,.25)'),
+    ] : []),
+  ];
+
+  new Chart(document.getElementById('chartScatter'), {
+    type: 'bubble',
+    data: {
+      datasets,
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      scales: {
+        x: { type:'time', time:{unit:'minute',displayFormats:{minute:'HH:mm'}}, ticks:{color:'#64748b',font:{size:10},maxTicksLimit:10}, grid:{color:'rgba(255,255,255,.04)'} },
+        y: { min:0, max:1.05, ticks:{color:'#64748b',font:{size:10},callback:v=>'$'+v.toFixed(2)}, grid:{color:'rgba(255,255,255,.06)'} }
+      },
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        tooltip: {
+          ...CHART_DEFAULTS.plugins.tooltip,
+          callbacks: {
+            label: ctx => {
+              const d = ctx.raw;
+              return ` Price $${d.y.toFixed(4)}  @ ${new Date(d.x).toLocaleTimeString()}`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// ─────────────────────────────────────────────
+//  Boot
+// ─────────────────────────────────────────────
+fetch('trades.json')
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(render)
+  .catch(err => {
+    document.getElementById('app').innerHTML =
+      `<div style="text-align:center;padding:60px;color:var(--loss)">Failed to load trades.json<br><small>${err}</small></div>`;
+  });
+</script>
+</body>
+</html>

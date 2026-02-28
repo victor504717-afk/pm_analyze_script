@@ -13,22 +13,22 @@ TRADES_URL = "https://data-api.polymarket.com/trades"
 DEFAULT_OUTPUT_FILE = "trades.json"
 
 
-def search_market(query: str) -> Tuple[Optional[dict], Optional[dict]]:
-    """Search for a market and return (event, market) tuple."""
+def search_markets(query: str) -> Tuple[Optional[dict], list]:
+    """Search for an event and return (event, list_of_markets) tuple."""
     try:
         resp = requests.get(SEARCH_URL, params={"q": query}, timeout=10)
         resp.raise_for_status()
         data = resp.json()
     except requests.RequestException as exc:
-        print(f"Error searching market: {exc}", file=sys.stderr)
-        return None, None
+        print(f"Error searching markets: {exc}", file=sys.stderr)
+        return None, []
 
     events = data.get("events", []) if isinstance(data, dict) else []
     for event in events:
         markets = event.get("markets") or []
         if markets:
-            return event, markets[0]
-    return None, None
+            return event, markets
+    return None, []
 
 
 def verify_all_trades_fetched(condition_id: str, user_address: str, fetched_count: int, page_limit: int = 5000) -> bool:
@@ -133,46 +133,58 @@ def main():
     user_address = sys.argv[2]
     output_file = sys.argv[3] if len(sys.argv) > 3 else DEFAULT_OUTPUT_FILE
 
-    # Search for market
-    print(f"Searching for market: {market_query}")
-    event, market = search_market(market_query)
+    # Search for event and its markets
+    print(f"Searching for event: {market_query}")
+    event, markets = search_markets(market_query)
     
-    if not market:
+    if not event or not markets:
         print("Error: No market found for that query.", file=sys.stderr)
         sys.exit(1)
 
-    market_title = (
-        market.get("question")
-        or market.get("title")
-        or event.get("title", "Unknown Market")
-    )
-    condition_id = market.get("conditionId") or ""
-    
-    print(f"Found market: {market_title}")
-    print(f"Condition ID: {condition_id}")
+    print(f"\nFound event: {event.get('title', 'Unknown Event')}")
+    print(f"Found {len(markets)} sub-markets under this event. Fetching trades for all of them...\n")
 
-    # Fetch trades
-    trades = fetch_trades(condition_id, user_address)
+    all_trades = []
     
-    if not trades:
-        print("No trades found for that user/market combination.")
+    for idx, market in enumerate(markets):
+        market_title = (
+            market.get("question")
+            or market.get("title")
+            or event.get("title", "Unknown Market")
+        )
+        condition_id = market.get("conditionId") or ""
+        
+        if not condition_id:
+            continue
+            
+        print(f"--- Market {idx+1}/{len(markets)}: {market_title} ---")
+        print(f"Condition ID: {condition_id}")
+
+        # Fetch trades
+        trades = fetch_trades(condition_id, user_address)
+        
+        if trades:
+            if verify_all_trades_fetched(condition_id, user_address, len(trades)):
+                print("  [OK] Verification passed: All trades fetched.")
+            else:
+                print("  [!] Warning: Additional trades may exist.")
+            all_trades.extend(trades)
+        else:
+            print("  No trades found in this sub-market.")
+        print()
+    
+    if not all_trades:
+        print("No trades found for that user across all markets in this event.")
         sys.exit(0)
-    
-    # Verify we got all trades
-    print("\nVerifying all trades were fetched...")
-    if verify_all_trades_fetched(condition_id, user_address, len(trades)):
-        print("✓ Verification passed: No additional trades found beyond what we fetched.")
-    else:
-        print("⚠ Warning: Additional trades may exist. Consider re-running with a larger page limit.")
 
     # Sort by timestamp
-    trades.sort(key=lambda x: x.get("timestamp", 0))
+    all_trades.sort(key=lambda x: x.get("timestamp", 0))
 
     # Save to file
     try:
         with open(output_file, "w") as f:
-            json.dump(trades, f, indent=2)
-        print(f"\nSuccessfully saved {len(trades)} trades to {output_file}")
+            json.dump(all_trades, f, indent=2)
+        print(f"Successfully saved {len(all_trades)} total trades to {output_file}")
     except IOError as exc:
         print(f"Error writing to file: {exc}", file=sys.stderr)
         sys.exit(1)

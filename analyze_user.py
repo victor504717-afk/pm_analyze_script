@@ -81,7 +81,7 @@ def main():
         sys.exit(1)
         
     if not output_path.exists():
-        print(f"\n⚠️  No trade data file ({output_file}) was generated.")
+        print(f"\n[!]  No trade data file ({output_file}) was generated.")
         print("This usually means the user has not made any trades in this specific market.")
         print("Skipping analysis.")
         sys.exit(0)
