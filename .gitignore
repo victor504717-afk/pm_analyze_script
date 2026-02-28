@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Output and data files
+*.json
+visualization/
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
